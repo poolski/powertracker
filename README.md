@@ -4,6 +4,8 @@ Queries HomeAssistant for a summary of your power usage over a period of time.
 Home Assistant provides power usage data for each hour on its Energy dashboard, but does not have an API endpoint to query this data.
 The websocket API does provide a way to do this, which is what the frontend uses.
 
+I got fed up of trying to figure out how to get the same data that the Energy dashboard shows, so I wrote this tool to do it for me.
+
 This tool queries the websocket API to get the power usage data for each hour over a period of days and outputs the data in various formats
 
 ## Installation
