@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/csv"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
@@ -57,8 +58,24 @@ func (c *Client) Connect() error {
 		HandshakeTimeout: 10 * time.Second,
 	}
 
+	// Work out the URL to dial
+	if viper.GetString("url") == "" {
+		return fmt.Errorf("url is required")
+	}
+	dialURL, err := url.Parse(viper.GetString("url"))
+	if err != nil {
+		return err
+	}
+	if dialURL.Scheme == "http" {
+		dialURL.Scheme = "ws"
+	} else if dialURL.Scheme == "https" {
+		dialURL.Scheme = "wss"
+	}
+	dialURL.Path = "/api/websocket"
+
 	// Dial the websocket
-	conn, _, err := dialer.Dial("wss://ha.service.antisp.in/api/websocket", nil)
+	log.Info().Msgf("connecting to %s", dialURL.String())
+	conn, _, err := dialer.Dial(dialURL.String(), nil)
 	if err != nil {
 		return err
 	}

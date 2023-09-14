@@ -78,7 +78,7 @@ func initConfig() {
 		viper.Set("api_key", apiKey)
 		viper.Set("url", baseURL)
 
-		err := os.MkdirAll(filepath.Dir(cfgFile), 0755)
+		err = os.MkdirAll(filepath.Dir(cfgFile), 0755)
 		if err != nil {
 			log.Err(err).Msg("creating config directory")
 		}
