@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"encoding/csv"
 	"fmt"
 	"net/url"
@@ -37,9 +38,10 @@ type APIResponse struct {
 }
 
 var (
-	days    int
-	output  string
-	csvFile string
+	days     int
+	output   string
+	csvFile  string
+	insecure bool
 )
 
 const hoursInADay = 24
@@ -72,6 +74,12 @@ func (c *Client) Connect() error {
 		dialURL.Scheme = "wss"
 	}
 	dialURL.Path = "/api/websocket"
+
+	// Set up the TLS config
+	// If Home Assistant is running with a self-signed cert, then we need to skip verification
+	_ = &tls.Config{
+		InsecureSkipVerify: true,
+	}
 
 	// Dial the websocket
 	log.Info().Msgf("connecting to %s", dialURL.String())

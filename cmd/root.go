@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
+	"github.com/Songmu/prompter"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -67,30 +69,41 @@ func initConfig() {
 	if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
 		fmt.Println("No config file found. Let's set one up.")
 
-		fmt.Println("Please enter your API key:")
-		var apiKey string
-		fmt.Scanln(&apiKey)
-
-		fmt.Println("Please enter the URL for your Home Assistant instance (e.g. http://localhost:8123):")
-		var baseURL string
-		fmt.Scanln(&baseURL)
-
-		viper.Set("api_key", apiKey)
-		viper.Set("url", baseURL)
+		err := promtUserConfig()
+		if err != nil {
+			log.Fatal().Msgf("prompting user for config: %s", err.Error())
+		}
 
 		err = os.MkdirAll(filepath.Dir(cfgFile), 0755)
 		if err != nil {
-			log.Err(err).Msg("creating config directory")
+			log.Fatal().Msgf("creating config dir: %s", err.Error())
 		}
 
 		f, err := os.Create(cfgFile)
 		if err != nil {
-			log.Err(err).Msg("creating file")
+			log.Fatal().Msgf("creating config file: %s", err.Error())
 		}
 		defer f.Close()
 
 		if err := viper.WriteConfigAs(cfgFile); err != nil {
-			log.Err(err).Msg("writing config file")
+			log.Fatal().Msgf("writing config file: %s", err.Error())
 		}
 	}
+}
+
+func promtUserConfig() error {
+	urlPrompt := prompter.Prompt("Home Assistant URL - e.g. http://localhost:8123", "")
+	token := prompter.Password("Home Assistant Long-Lived Access Token")
+
+	haURL, err := url.Parse(urlPrompt)
+	if haURL.Scheme == "" {
+		haURL.Scheme = "http"
+	}
+	if err != nil {
+		return err
+	}
+
+	viper.Set("api_key", token)
+	viper.Set("url", haURL.String())
+	return nil
 }
