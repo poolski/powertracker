@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"encoding/csv"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
@@ -36,9 +38,10 @@ type APIResponse struct {
 }
 
 var (
-	days    int
-	output  string
-	csvFile string
+	days     int
+	output   string
+	csvFile  string
+	insecure bool
 )
 
 const hoursInADay = 24
@@ -47,6 +50,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVarP(&days, "days", "d", 30, "number of days to compute power stats for")
 	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", "", "output format (text, table, csv)")
 	rootCmd.PersistentFlags().StringVarP(&csvFile, "csv-file", "f", "results.csv", "the path of the CSV file to write to")
+	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "skip TLS verification")
 }
 
 func (c *Client) Connect() error {
@@ -57,8 +61,31 @@ func (c *Client) Connect() error {
 		HandshakeTimeout: 10 * time.Second,
 	}
 
+	// Work out the URL to dial
+	if viper.GetString("url") == "" {
+		return fmt.Errorf("url is required")
+	}
+	dialURL, err := url.Parse(viper.GetString("url"))
+	if err != nil {
+		return err
+	}
+	if dialURL.Scheme == "http" {
+		dialURL.Scheme = "ws"
+	} else if dialURL.Scheme == "https" {
+		dialURL.Scheme = "wss"
+	}
+	dialURL.Path = "/api/websocket"
+
+	// Skip TLS verification if insecure flag is set
+	if insecure {
+		dialer.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+	}
+
 	// Dial the websocket
-	conn, _, err := dialer.Dial("wss://ha.service.antisp.in/api/websocket", nil)
+	log.Info().Msgf("connecting to %s", dialURL.String())
+	conn, _, err := dialer.Dial(dialURL.String(), nil)
 	if err != nil {
 		return err
 	}
