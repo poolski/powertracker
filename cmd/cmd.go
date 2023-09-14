@@ -50,6 +50,7 @@ func init() {
 	rootCmd.PersistentFlags().IntVarP(&days, "days", "d", 30, "number of days to compute power stats for")
 	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", "", "output format (text, table, csv)")
 	rootCmd.PersistentFlags().StringVarP(&csvFile, "csv-file", "f", "results.csv", "the path of the CSV file to write to")
+	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "skip TLS verification")
 }
 
 func (c *Client) Connect() error {
@@ -75,10 +76,11 @@ func (c *Client) Connect() error {
 	}
 	dialURL.Path = "/api/websocket"
 
-	// Set up the TLS config
-	// If Home Assistant is running with a self-signed cert, then we need to skip verification
-	_ = &tls.Config{
-		InsecureSkipVerify: true,
+	// Skip TLS verification if insecure flag is set
+	if insecure {
+		dialer.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
 	}
 
 	// Dial the websocket
