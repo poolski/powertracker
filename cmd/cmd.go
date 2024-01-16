@@ -87,13 +87,13 @@ func (c *Client) Connect() error {
 	log.Info().Msgf("connecting to %s", dialURL.String())
 	conn, _, err := dialer.Dial(dialURL.String(), nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("dial: %w", err)
 	}
 
 	// Read the initial message
 	var initMsg map[string]any
 	if err := conn.ReadJSON(&initMsg); err != nil {
-		return err
+		return fmt.Errorf("initial message: %w", err)
 	}
 
 	// Send the authentication message
@@ -101,13 +101,13 @@ func (c *Client) Connect() error {
 		"type":         "auth",
 		"access_token": viper.GetString("api_key"),
 	}); err != nil {
-		return err
+		return fmt.Errorf("auth message: %w", err)
 	}
 
 	// Read the authentication response
 	var authResp map[string]any
 	if err := conn.ReadJSON(&authResp); err != nil {
-		return err
+		return fmt.Errorf("auth response: %w", err)
 	}
 	if authResp["type"] != "auth_ok" {
 		return fmt.Errorf("authentication failed: %v", authResp["message"])
