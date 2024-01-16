@@ -25,7 +25,7 @@ type APIResponse struct {
 	Type    string `json:"type"`    // Type is the type of the response.
 	Success bool   `json:"success"` // Success indicates whether the response was successful or not.
 	Result  struct {
-		SmartMeterElectricityImport []struct {
+		ImportedElectricity []struct {
 			Start  int     `json:"start"`
 			End    int     `json:"end"`
 			Change float64 `json:"change"` // Change is the amount of electricity imported.
@@ -87,13 +87,14 @@ func (c *Client) Connect() error {
 	log.Info().Msgf("connecting to %s", dialURL.String())
 	conn, _, err := dialer.Dial(dialURL.String(), nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("dial: %w", err)
 	}
+	log.Info().Msg("connected")
 
 	// Read the initial message
 	var initMsg map[string]any
 	if err := conn.ReadJSON(&initMsg); err != nil {
-		return err
+		return fmt.Errorf("initial message: %w", err)
 	}
 
 	// Send the authentication message
@@ -101,17 +102,18 @@ func (c *Client) Connect() error {
 		"type":         "auth",
 		"access_token": viper.GetString("api_key"),
 	}); err != nil {
-		return err
+		return fmt.Errorf("auth message: %w", err)
 	}
 
 	// Read the authentication response
 	var authResp map[string]any
 	if err := conn.ReadJSON(&authResp); err != nil {
-		return err
+		return fmt.Errorf("auth response: %w", err)
 	}
 	if authResp["type"] != "auth_ok" {
 		return fmt.Errorf("authentication failed: %v", authResp["message"])
 	}
+	log.Info().Msg("authenticated")
 
 	c.Conn = conn
 	return nil
@@ -240,12 +242,18 @@ func getResults(c *Client) ([][]float64, error) {
 
 		offset := time.Duration((i+1)*24) * time.Hour
 		start := time.Now().Add(-offset).Truncate(24 * time.Hour).Format("2006-01-02T15:04:05.000Z")
+
+		sensorID := viper.GetString("sensor_id")
+		if sensorID == "" {
+			return nil, fmt.Errorf("sensor_id is required")
+		}
+
 		msg := map[string]interface{}{
 			"id":            c.MessageID,
 			"type":          "recorder/statistics_during_period",
 			"start_time":    start,
 			"end_time":      time.Now().Truncate(24 * time.Hour).Format("2006-01-02T15:04:05.000Z"),
-			"statistic_ids": []string{"sensor.smart_meter_electricity_import_2"},
+			"statistic_ids": []string{sensorID},
 			"period":        "hour",
 			"types":         []string{"change"},
 			"units": map[string]string{
@@ -266,9 +274,15 @@ func getResults(c *Client) ([][]float64, error) {
 		if !data.Success {
 			return nil, fmt.Errorf("api response error: %v", data.Error)
 		}
+
+		if len(data.Result.ImportedElectricity) != hoursInADay {
+			return nil, fmt.Errorf("expected %d sets of results, got %d", hoursInADay, len(data.Result.ImportedElectricity))
+		}
+
 		changeSlice := make([]float64, hoursInADay)
+		log.Debug().Msgf("got %d results", len(data.Result.ImportedElectricity))
 		for j := range changeSlice {
-			changeSlice[j] = data.Result.SmartMeterElectricityImport[j].Change
+			changeSlice[j] = data.Result.ImportedElectricity[j].Change
 		}
 		results[i] = changeSlice
 	}
