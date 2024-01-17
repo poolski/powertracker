@@ -7,12 +7,20 @@ import (
 	"path/filepath"
 
 	"github.com/Songmu/prompter"
+	"github.com/poolski/powertracker/cmd/client"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-var cfgFile string
+var (
+	cfgFile string
+
+	days     int
+	output   string
+	csvFile  string
+	insecure bool
+)
 
 var rootCmd = &cobra.Command{
 	Use:   "powertracker",
@@ -24,11 +32,16 @@ var rootCmd = &cobra.Command{
 	It also saves the data to a CSV file in the current directory.`,
 
 	Run: func(cmd *cobra.Command, args []string) {
-		c := Client{}
+		c := client.New(client.Config{
+			Days:     days,
+			Output:   output,
+			FilePath: csvFile,
+			Insecure: insecure,
+		})
 		if err := c.Connect(); err != nil {
 			log.Fatal().Msgf("connecting to websocket: %s", err.Error())
 		}
-		c.computePowerStats()
+		c.ComputePowerStats()
 	},
 }
 
@@ -52,6 +65,11 @@ func init() {
 		sep := string(filepath.Separator)
 		confDir := home + sep + ".config"
 		rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", confDir+"/powertracker/config.yaml", "config file")
+
+		rootCmd.PersistentFlags().IntVarP(&days, "days", "d", 30, "number of days to compute power stats for")
+		rootCmd.PersistentFlags().StringVarP(&output, "output", "o", "", "output format (text, table, csv)")
+		rootCmd.PersistentFlags().StringVarP(&csvFile, "csv-file", "f", "results.csv", "the path of the CSV file to write to")
+		rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "skip TLS verification")
 	}
 }
 
