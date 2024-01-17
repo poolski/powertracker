@@ -8,9 +8,13 @@ require (
 	github.com/rs/zerolog v1.30.0
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.16.0
+	gotest.tools/v3 v3.5.1
 )
 
-require golang.org/x/term v0.0.0-20220526004731-065cf7ba2467 // indirect
+require (
+	github.com/google/go-cmp v0.5.9 // indirect
+	golang.org/x/term v0.0.0-20220526004731-065cf7ba2467 // indirect
+)
 
 require (
 	github.com/Songmu/prompter v0.5.1
