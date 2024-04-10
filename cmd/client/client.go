@@ -35,12 +35,10 @@ type APIResponse struct {
 	ID      int    `json:"id"`      // ID is the unique identifier of the response.
 	Type    string `json:"type"`    // Type is the type of the response.
 	Success bool   `json:"success"` // Success indicates whether the response was successful or not.
-	Result  struct {
-		ImportedElectricity []struct {
-			Start  int     `json:"start"`
-			End    int     `json:"end"`
-			Change float64 `json:"change"` // Change is the amount of electricity imported.
-		} `json:"sensor.smart_meter_electricity_import_2"`
+	Result  map[string][]struct {
+		Change float64 `json:"change"`
+		End    int64   `json:"end"`
+		Start  int64   `json:"start"`
 	} `json:"result"` // Result contains the data returned by the API.
 	Error struct {
 		Code    string `json:"code"`
@@ -239,17 +237,16 @@ func getResults(c *Client) ([][]float64, error) {
 	// What we're doing is creating an offset from the current *day* based on a multiple of
 	// 24 hours, each time we iterate through the a "row" of the results slice.
 	results := make([][]float64, c.Config.Days)
+	sensorID := viper.GetString("sensor_id")
+	if sensorID == "" {
+		return nil, fmt.Errorf("sensor_id is required")
+	}
 
 	for i := range results {
 		c.MessageID++
 
 		offset := time.Duration((i+1)*24) * time.Hour
 		start := time.Now().Add(-offset).Truncate(24 * time.Hour).Format("2006-01-02T15:04:05.000Z")
-
-		sensorID := viper.GetString("sensor_id")
-		if sensorID == "" {
-			return nil, fmt.Errorf("sensor_id is required")
-		}
 
 		msg := map[string]interface{}{
 			"id":            c.MessageID,
@@ -277,15 +274,9 @@ func getResults(c *Client) ([][]float64, error) {
 		if !data.Success {
 			return nil, fmt.Errorf("api response error: %v", data.Error)
 		}
-
-		if len(data.Result.ImportedElectricity) != hoursInADay {
-			return nil, fmt.Errorf("expected %d sets of results, got %d", hoursInADay, len(data.Result.ImportedElectricity))
-		}
-
 		changeSlice := make([]float64, hoursInADay)
-		log.Debug().Msgf("got %d results", len(data.Result.ImportedElectricity))
 		for j := range changeSlice {
-			changeSlice[j] = data.Result.ImportedElectricity[j].Change
+			changeSlice[j] = data.Result[sensorID][j].Change
 		}
 		results[i] = changeSlice
 	}
