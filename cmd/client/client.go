@@ -1,4 +1,4 @@
-package cmd
+package client
 
 import (
 	"crypto/tls"
@@ -14,9 +14,20 @@ import (
 	"github.com/spf13/viper"
 )
 
+type Config struct {
+	Days     int
+	Output   string
+	FilePath string
+	Insecure bool
+}
+
 type Client struct {
-	Conn      *websocket.Conn
-	MessageID int // MessageID is the ID of the message sent to the websocket. These must be incremented with each subsequent request
+	Config Config
+	Conn   *websocket.Conn
+	// MessageID represents the sequential ID of each message after the initial auth.
+	// These must be incremented with each subsequent request, otherwise the API will
+	// return an error.
+	MessageID int
 }
 
 // APIResponse represents the structure of the response received from the Home Assistant API.
@@ -24,12 +35,10 @@ type APIResponse struct {
 	ID      int    `json:"id"`      // ID is the unique identifier of the response.
 	Type    string `json:"type"`    // Type is the type of the response.
 	Success bool   `json:"success"` // Success indicates whether the response was successful or not.
-	Result  struct {
-		ImportedElectricity []struct {
-			Start  int     `json:"start"`
-			End    int     `json:"end"`
-			Change float64 `json:"change"` // Change is the amount of electricity imported.
-		} `json:"sensor.smart_meter_electricity_import_2"`
+	Result  map[string][]struct {
+		Change float64 `json:"change"`
+		End    int64   `json:"end"`
+		Start  int64   `json:"start"`
 	} `json:"result"` // Result contains the data returned by the API.
 	Error struct {
 		Code    string `json:"code"`
@@ -37,20 +46,12 @@ type APIResponse struct {
 	} `json:"error,omitempty"`
 }
 
-var (
-	days     int
-	output   string
-	csvFile  string
-	insecure bool
-)
-
 const hoursInADay = 24
 
-func init() {
-	rootCmd.PersistentFlags().IntVarP(&days, "days", "d", 30, "number of days to compute power stats for")
-	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", "", "output format (text, table, csv)")
-	rootCmd.PersistentFlags().StringVarP(&csvFile, "csv-file", "f", "results.csv", "the path of the CSV file to write to")
-	rootCmd.PersistentFlags().BoolVarP(&insecure, "insecure", "i", false, "skip TLS verification")
+func New(cfg Config) *Client {
+	return &Client{
+		Config: cfg,
+	}
 }
 
 func (c *Client) Connect() error {
@@ -77,7 +78,7 @@ func (c *Client) Connect() error {
 	dialURL.Path = "/api/websocket"
 
 	// Skip TLS verification if insecure flag is set
-	if insecure {
+	if c.Config.Insecure {
 		dialer.TLSClientConfig = &tls.Config{
 			InsecureSkipVerify: true,
 		}
@@ -122,7 +123,7 @@ func (c *Client) Connect() error {
 // computePowerStats computes the power statistics for a given number of days and hours.
 // It prints a table to stdout where the rows are "days" and the columns are "hours".
 // The function writes the results to a CSV file and prints the averages to the console.
-func (c *Client) computePowerStats() {
+func (c *Client) ComputePowerStats() {
 	results, err := getResults(c)
 	if err != nil {
 		log.Error().Msg(fmt.Sprintf("getting results: %v", err))
@@ -136,7 +137,7 @@ func (c *Client) computePowerStats() {
 		for j := range results {
 			sum += results[j][i]
 		}
-		averages[i] = sum / float64(days)
+		averages[i] = sum / float64(c.Config.Days)
 	}
 
 	// Generate column headers for table/CSV
@@ -145,13 +146,13 @@ func (c *Client) computePowerStats() {
 		headers[i] = fmt.Sprintf("%d", i)
 	}
 
-	switch output {
+	switch c.Config.Output {
 	case "text":
 		writePlainText(averages)
 	case "table":
 		printTable(results, averages, headers)
 	case "csv":
-		err = writeCSVFile(headers, results, averages)
+		err = c.writeCSVFile(headers, results, averages)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("writing CSV file: %v", err))
 			return
@@ -170,8 +171,8 @@ func writePlainText(averages []float64) {
 	}
 }
 
-func writeCSVFile(headers []string, results [][]float64, averages []float64) error {
-	f, err := os.Create(csvFile)
+func (c *Client) writeCSVFile(headers []string, results [][]float64, averages []float64) error {
+	f, err := os.Create(c.Config.FilePath)
 	if err != nil {
 		return fmt.Errorf("creating file: %w", err)
 	}
@@ -235,18 +236,17 @@ func getResults(c *Client) ([][]float64, error) {
 
 	// What we're doing is creating an offset from the current *day* based on a multiple of
 	// 24 hours, each time we iterate through the a "row" of the results slice.
-	results := make([][]float64, days)
+	results := make([][]float64, c.Config.Days)
+	sensorID := viper.GetString("sensor_id")
+	if sensorID == "" {
+		return nil, fmt.Errorf("sensor_id is required")
+	}
 
 	for i := range results {
 		c.MessageID++
 
 		offset := time.Duration((i+1)*24) * time.Hour
 		start := time.Now().Add(-offset).Truncate(24 * time.Hour).Format("2006-01-02T15:04:05.000Z")
-
-		sensorID := viper.GetString("sensor_id")
-		if sensorID == "" {
-			return nil, fmt.Errorf("sensor_id is required")
-		}
 
 		msg := map[string]interface{}{
 			"id":            c.MessageID,
@@ -274,15 +274,9 @@ func getResults(c *Client) ([][]float64, error) {
 		if !data.Success {
 			return nil, fmt.Errorf("api response error: %v", data.Error)
 		}
-
-		if len(data.Result.ImportedElectricity) != hoursInADay {
-			return nil, fmt.Errorf("expected %d sets of results, got %d", hoursInADay, len(data.Result.ImportedElectricity))
-		}
-
 		changeSlice := make([]float64, hoursInADay)
-		log.Debug().Msgf("got %d results", len(data.Result.ImportedElectricity))
 		for j := range changeSlice {
-			changeSlice[j] = data.Result.ImportedElectricity[j].Change
+			changeSlice[j] = data.Result[sensorID][j].Change
 		}
 		results[i] = changeSlice
 	}
