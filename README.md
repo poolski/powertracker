@@ -8,6 +8,7 @@ I got fed up of trying to figure out how to get the same data that the Energy da
 
 This tool queries the websocket API to get the power usage data for each hour over a period of days and outputs the data in various formats
 
+
 ## Installation
 
 Go
