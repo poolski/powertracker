@@ -112,7 +112,7 @@ func initConfig() {
 func promtUserConfig() error {
 	urlPrompt := prompter.Prompt("Home Assistant URL - e.g. http://localhost:8123", "")
 	token := prompter.Password("Home Assistant Long-Lived Access Token")
-	sensor := prompter.Prompt("Power sensor entity ID - e.g. sensor.power", "")
+	sensorID := prompter.Prompt("Power sensor entity ID - e.g. sensor.power", "")
 
 	haURL, err := url.Parse(urlPrompt)
 	if haURL.Scheme == "" {
@@ -124,6 +124,6 @@ func promtUserConfig() error {
 
 	viper.Set("api_key", token)
 	viper.Set("url", haURL.String())
-	viper.Set("sensor", sensor)
+	viper.Set("sensor_id", sensorID)
 	return nil
 }

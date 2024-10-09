@@ -274,6 +274,9 @@ func getResults(c *Client) ([][]float64, error) {
 		if !data.Success {
 			return nil, fmt.Errorf("api response error: %v", data.Error)
 		}
+		if len(data.Result[sensorID]) == 0 {
+			return nil, fmt.Errorf("no results returned - is your sensorID '%s' correct?", sensorID)
+		}
 		changeSlice := make([]float64, hoursInADay)
 		for j := range changeSlice {
 			changeSlice[j] = data.Result[sensorID][j].Change
